@@ -317,8 +317,10 @@ var COUNTRIES = [
 ];
 
 /* ---------------- storage ---------------- */
-async function storeGet(key){ try{ var r = await window.storage.get(key, true); return r && r.value ? JSON.parse(r.value) : null; }catch(e){ return null; } }
-async function storeSet(key, val){ try{ await window.storage.set(key, JSON.stringify(val), true); }catch(e){} }
+/* Uses the browser's own localStorage so the app works as a standalone hosted site
+   (window.storage only exists inside the Claude artifact preview, not on a real URL). */
+async function storeGet(key){ try{ var v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }catch(e){ return null; } }
+async function storeSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
 
 /* ---------------- photos + OCR (all client-side, nothing leaves the browser except the OCR library itself) ---------------- */
 function resizeImageFile(file){
