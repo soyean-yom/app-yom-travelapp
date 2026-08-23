@@ -317,6 +317,11 @@ function navermapSearch(name){ return 'https://map.naver.com/p/search/'+encodeUR
 function platformSearch(platform, name){ return 'https://www.google.com/search?q='+encodeURIComponent(platform+' '+name); }
 var PRICE_PLATFORMS = ['클룩','케이케이데이','공식사이트','기타'];
 var CURRENCIES = ['JPY','USD','EUR','VND','THB','TWD','AUD','PHP','SGD','CNY','KRW','기타'];
+var RATE_UNIT_CURRENCIES = { JPY:100, VND:100 };
+function rateUnit(currency){ return RATE_UNIT_CURRENCIES[currency] || 1; }
+function toDisplayRate(rate, currency){ var u=rateUnit(currency); var v=(rate||0)*u; return Math.round(v*100)/100; }
+function toStoredRate(displayVal, currency){ return (parseFloat(displayVal)||0) / rateUnit(currency); }
+function rateFieldLabel(currency){ return '환율 ('+rateUnit(currency)+(currency||'통화')+' = ? KRW)'; }
 var COUNTRIES = [
   { name:'일본', flag:'🇯🇵', currency:'JPY' },
   { name:'대만', flag:'🇹🇼', currency:'TWD' },
@@ -604,7 +609,7 @@ function newTripModal(){
     '<div class="two-col"><div class="field"><label>시작일 (선택)</label><input id="nt-start" type="date"></div><div class="field"><label>종료일 (선택)</label><input id="nt-end" type="date"></div></div>'+
     '<div class="two-col">'+
       '<div class="field"><label>통화</label><select id="nt-currency">'+CURRENCIES.filter(function(c){return c!=='KRW';}).map(function(c){return '<option value="'+c+'"'+(c==='JPY'?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="field"><label>환율 (1통화 = ? KRW)</label><input id="nt-rate" type="number" step="0.01" placeholder="예: 9.5"></div>'+
+      '<div class="field"><label id="nt-rate-label">'+rateFieldLabel('JPY')+'</label><input id="nt-rate" type="number" step="0.01" placeholder="예: 910"></div>'+
     '</div>'+
     '<button class="primary-btn" data-act="create-trip">✨ Next Travel 💭</button>';
   return modalWrap('새 여행 만들기', inner);
@@ -694,7 +699,7 @@ function tripScreen(){
         '<button class="header-btn" data-act="back">'+ico('chevronLeft',18)+'</button>'+
         ((t.customIcon||t.flag) ? '<span style="font-size:22px;">'+(t.customIcon||t.flag)+'</span>' : '')+
         '<div style="flex:1;min-width:0;cursor:pointer;" data-act="open-trip-edit"><div class="row" style="gap:4px;"><span class="pixel-title" style="color:var(--ink);font-size:16px;font-weight:400;">'+esc(t.name)+'</span>'+ico('edit',12,'#B8B8BC')+'</div><div style="color:var(--sub);font-size:12px;">'+esc(placeLine2)+(t.startDate?' · '+formatMD(t.startDate)+(t.endDate?'~'+formatMD(t.endDate):''):'')+'</div></div>'+
-        '<button class="rate-btn" data-act="open-trip-edit">'+ico('refresh',12,'#6C96FF')+'<span class="mono" style="font-size:12px;font-weight:700;color:var(--ink);">'+t.rate+'</span></button>'+
+        '<button class="rate-btn" data-act="open-trip-edit">'+ico('refresh',12,'#6C96FF')+'<span class="mono" style="font-size:12px;font-weight:700;color:var(--ink);">'+rateUnit(t.currency)+t.currency+'='+toDisplayRate(t.rate,t.currency)+'</span></button>'+
       '</div>'+
     '</div>'+
     '<div class="deco-strip"></div>'+
@@ -727,7 +732,7 @@ function tripEditModal(t){
     '<div class="two-col"><div class="field"><label>시작일 (선택)</label><input id="te-start" type="date" value="'+(t.startDate||'')+'"></div><div class="field"><label>종료일 (선택)</label><input id="te-end" type="date" value="'+(t.endDate||'')+'"></div></div>'+
     '<div class="two-col">'+
       '<div class="field"><label>통화</label><select id="te-currency">'+CURRENCIES.filter(function(c){return c!=='KRW';}).map(function(c){return '<option value="'+c+'"'+(t.currency===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
-      '<div class="field"><label>환율 (1통화 = ? KRW)</label><input id="te-rate" type="number" step="0.01" value="'+t.rate+'"></div>'+
+      '<div class="field"><label id="te-rate-label">'+rateFieldLabel(t.currency)+'</label><input id="te-rate" type="number" step="0.01" value="'+toDisplayRate(t.rate, t.currency)+'"></div>'+
     '</div>'+
     '<p style="font-size:12px;color:var(--sub);margin:-4px 0 12px;">환율은 개별 항목에서 다시 수정할 수도 있어요.</p>'+
     '<button class="primary-btn" data-act="save-trip-edit">저장</button>';
@@ -892,7 +897,7 @@ function budgetRow(item, krw, trip){
   var meta = item.category ? catMeta(item.category) : null;
   var sub = item.payMode==='krw'
     ? '₩'+item.amount.toLocaleString()+' 직접결제'
-    : item.amount.toLocaleString()+' '+(item.currency||trip.currency)+' · 환율 '+(item.rate||trip.rate);
+    : item.amount.toLocaleString()+' '+(item.currency||trip.currency)+' · 환율 '+toDisplayRate(item.rate||trip.rate, item.currency||trip.currency);
   if (item.paymentMethod) sub += ' · '+item.paymentMethod;
   if (item.date) sub += ' · '+item.date;
   return '<div class="card">'+
@@ -937,7 +942,7 @@ function budgetModal(t){
         '<div class="field"><label>통화</label><select id="b-currency">'+CURRENCIES.map(function(c){return '<option value="'+c+'"'+(currency===c?' selected':'')+'>'+c+'</option>';}).join('')+'</select></div>'+
         '<div class="field"><label>금액</label><input id="b-amount-local" type="number" placeholder="0" value="'+(payMode==='local'&&e?e.amount:'')+'"></div>'+
       '</div>'+
-      '<div class="field"><label>환율 (1통화 = ? KRW)</label><input id="b-rate" type="number" step="0.01" value="'+rate+'"></div>'+
+      '<div class="field"><label id="b-rate-label">'+rateFieldLabel(currency)+'</label><input id="b-rate" type="number" step="0.01" value="'+toDisplayRate(rate,currency)+'"></div>'+
       '<p style="font-size:11px;color:var(--sub);margin:-6px 0 0;">통화가 여행 기본 통화('+t.currency+')와 다르면 환율을 직접 입력해주세요.</p>'+
     '</div>'+
     '<div id="b-krw-wrap" style="display:'+(payMode==='krw'?'block':'none')+';">'+
@@ -1457,13 +1462,15 @@ document.getElementById('root').addEventListener('click', async function(e){
     document.getElementById('nt-flag').value = el.dataset.flag;
     var curSel = document.getElementById('nt-currency');
     if (curSel) curSel.value = el.dataset.currency;
+    var rateLbl = document.getElementById('nt-rate-label');
+    if (rateLbl) rateLbl.textContent = rateFieldLabel(el.dataset.currency);
     return;
   }
   if (act==='create-trip'){
     var name=document.getElementById('nt-name').value.trim() || '제목 없는 여행';
     var country=document.getElementById('nt-country').value, flag=document.getElementById('nt-flag').value;
     var dest=document.getElementById('nt-dest').value.trim();
-    var currency=document.getElementById('nt-currency').value || 'JPY', rate=document.getElementById('nt-rate').value || '1';
+    var currency=document.getElementById('nt-currency').value || 'JPY', rate=toStoredRate(document.getElementById('nt-rate').value || rateUnit(currency), currency);
     var startDate=document.getElementById('nt-start').value, endDate=document.getElementById('nt-end').value;
     var customIcon=document.getElementById('nt-icon').value.trim();
     await createTrip({ name:name, country:country, flag:flag, destination:dest, currency:currency, rate:rate, startDate:startDate, endDate:endDate, customIcon:customIcon });
@@ -1522,6 +1529,8 @@ document.getElementById('root').addEventListener('click', async function(e){
     document.getElementById('te-flag').value = el.dataset.flag;
     var curSel2 = document.getElementById('te-currency');
     if (curSel2) curSel2.value = el.dataset.currency;
+    var rateLbl2 = document.getElementById('te-rate-label');
+    if (rateLbl2) rateLbl2.textContent = rateFieldLabel(el.dataset.currency);
     return;
   }
   if (act==='save-trip-edit'){
@@ -1530,7 +1539,7 @@ document.getElementById('root').addEventListener('click', async function(e){
     var teDest = document.getElementById('te-dest').value.trim();
     var teStart = document.getElementById('te-start').value, teEnd = document.getElementById('te-end').value;
     var teCurrency = document.getElementById('te-currency').value;
-    var teRate = parseFloat(document.getElementById('te-rate').value) || currentTrip().rate;
+    var teRate = toStoredRate(document.getElementById('te-rate').value, teCurrency) || currentTrip().rate;
     var teIcon = document.getElementById('te-icon').value.trim();
     var next = S.trips.map(function(t){ return t.id===S.currentTripId ? Object.assign({},t,{ name:teName, country:teCountry, flag:teFlag, destination:teDest, startDate:teStart, endDate:teEnd, currency:teCurrency, rate:teRate, customIcon:teIcon }) : t; });
     S.ui.showRateEdit=false; await saveTrips(next); render(); return;
@@ -1572,8 +1581,8 @@ document.getElementById('root').addEventListener('click', async function(e){
     } else {
       var amountLocal=parseFloat(document.getElementById('b-amount-local').value);
       var currencyVal=document.getElementById('b-currency').value;
-      var rateVal=parseFloat(document.getElementById('b-rate').value);
-      if (isNaN(amountLocal) || isNaN(rateVal)) return;
+      var rateVal=toStoredRate(document.getElementById('b-rate').value, currencyVal);
+      if (isNaN(amountLocal) || !rateVal) return;
       entry={ title:title, status:status, payMode:'local', currency:currencyVal, amount:amountLocal, rate:rateVal, paymentMethod:paymentMethod, category:category, date:dateField };
     }
     var list=S.tripData.budget||[]; var editId=S.ui.budget.editId;
@@ -1899,9 +1908,12 @@ document.getElementById('root').addEventListener('change', function(e){
   if (e.target.id==='b-custom-rate'){ var wrap=document.getElementById('b-rate-wrap'); wrap.style.display = e.target.checked ? 'block' : 'none'; return; }
   if (e.target.id==='b-currency'){
     var rateField=document.getElementById('b-rate'); var trip=currentTrip();
-    if (rateField && trip){ rateField.value = e.target.value===trip.currency ? trip.rate : ''; }
+    var lbl = document.getElementById('b-rate-label'); if (lbl) lbl.textContent = rateFieldLabel(e.target.value);
+    if (rateField && trip){ rateField.value = e.target.value===trip.currency ? toDisplayRate(trip.rate, trip.currency) : ''; }
     return;
   }
+  if (e.target.id==='nt-currency'){ var l2=document.getElementById('nt-rate-label'); if (l2) l2.textContent = rateFieldLabel(e.target.value); return; }
+  if (e.target.id==='te-currency'){ var l3=document.getElementById('te-rate-label'); if (l3) l3.textContent = rateFieldLabel(e.target.value); return; }
 });
 document.getElementById('root').addEventListener('change', function(e){
   if (e.target.classList && e.target.classList.contains('photo-input')){
