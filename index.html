@@ -1264,7 +1264,7 @@ function transitConnectorRow(toItem){
   var iconHtml = meta ? '<span style="display:inline-flex;vertical-align:middle;margin-right:3px;">'+(meta.image&&IMG_ICONS[meta.image]?'<img src="'+IMG_ICONS[meta.image]+'" style="width:14px;height:14px;object-fit:contain;vertical-align:middle;" />':pixelIcon(meta.pixel,12,t?LINE_COLOR:'#8B8B92'))+'</span>' : '';
   var costText = t && t.cost ? (t.costMode==='krw' ? '₩'+Number(t.cost).toLocaleString() : Number(t.cost).toLocaleString()+' '+(t.currency||'')) : '';
   var badge = t
-    ? iconHtml+esc(t.mode||'')+(t.duration?' · '+t.duration+'분':'')+(costText?' · '+costText:'')
+    ? iconHtml+esc(t.mode||'')+(t.station?' · '+esc(t.station):'')+(t.duration?' · '+t.duration+'분':'')+(costText?' · '+costText:'')+(t.note?' 📝':'')
     : '+ 이동 정보 추가';
   return '<div style="display:flex;align-items:stretch;">'+
     '<div style="display:flex;flex-direction:column;align-items:center;width:22px;flex-shrink:0;">'+
@@ -1316,6 +1316,7 @@ function transitModal(){
     '<div class="field"><label>이동수단</label><div class="chipgroup" style="flex-wrap:wrap;"><input type="hidden" id="tr-mode" value="'+(t.mode||'도보')+'">'+
       TRANSIT_MODES.map(function(m){ var mIcon = (m.image&&IMG_ICONS[m.image]) ? '<img src="'+IMG_ICONS[m.image]+'" style="width:15px;height:15px;object-fit:contain;" />' : pixelIcon(m.pixel,13,t.mode===m.key?'#fff':'#4A4A55'); return '<button type="button" class="chip-opt'+(t.mode===m.key?' active':'')+'" style="'+(t.mode===m.key?'background:'+LINE_COLOR:'')+'flex:0 0 auto;padding:8px 12px;display:inline-flex;align-items:center;gap:4px;" data-act="chip" data-target="tr-mode" data-value="'+m.key+'" data-active-bg="'+LINE_COLOR+'">'+mIcon+m.key+'</button>'; }).join('')+
     '</div></div>'+
+    '<div class="field"><label>타는 곳 (역/정류장/노선번호 등, 선택)</label><input id="tr-station" placeholder="예: JR 신주쿠역 남쪽 출구, 도쿄버스 A12번" value="'+(t.station?esc(t.station):'')+'"></div>'+
     '<div class="field"><label>소요시간 (분)</label><input id="tr-duration" type="number" placeholder="예: 15" value="'+(t.duration||'')+'"></div>'+
     '<div class="field"><label>비용 (선택)</label><div class="chipgroup" style="margin-bottom:8px;"><input type="hidden" id="tr-costmode" value="'+costMode+'">'+
       '<button type="button" class="chip-opt'+(costMode==='local'?' active':'')+'" style="'+(costMode==='local'?'background:'+LINE_COLOR:'')+'" data-act="transit-costmode" data-value="local" data-active-bg="'+LINE_COLOR+'">현지통화</button>'+
@@ -1327,6 +1328,7 @@ function transitModal(){
     '</div>'+
     '<div id="tr-krw-wrap" style="display:'+(costMode==='krw'?'block':'none')+';"><div class="field"><label>금액 (KRW)</label><input id="tr-cost-krw" type="number" placeholder="예: 3000" value="'+(costMode==='krw'&&t.cost?t.cost:'')+'"></div></div>'+
     '</div>'+
+    '<div class="field"><label>메모 (체크포인트, 참고 블로그/링크, 유의사항 등)</label><textarea id="tr-note" placeholder="예: 개찰구 통과 전 IC카드 잔액 확인, 막차 22:40">'+(t.note?esc(t.note):'')+'</textarea></div>'+
     '<button class="primary-btn" data-act="transit-save" style="margin-bottom:8px;">저장</button>'+
     (toItem.transit ? '<button class="linkpill" data-act="transit-clear" style="width:100%;justify-content:center;padding:10px;">이동 정보 삭제</button>' : '');
   return modalWrap(esc(toItem.title)+' 가는 길', inner);
@@ -1740,9 +1742,11 @@ document.getElementById('root').addEventListener('click', async function(e){
   if (act==='transit-edit-open'){ S.ui.itinerary.showModal=false; S.ui.itinerary.transitEditId=id; render(); return; }
   if (act==='transit-save'){
     var mode=document.getElementById('tr-mode').value;
+    var station=document.getElementById('tr-station').value.trim();
     var duration=parseInt(document.getElementById('tr-duration').value,10)||0;
     var costMode=document.getElementById('tr-costmode').value;
-    var transitObj = { mode:mode, duration:duration, costMode:costMode };
+    var trNote=document.getElementById('tr-note').value.trim();
+    var transitObj = { mode:mode, station:station, duration:duration, costMode:costMode, note:trNote };
     if (costMode==='krw'){ transitObj.cost = parseFloat(document.getElementById('tr-cost-krw').value)||0; }
     else { transitObj.cost = parseFloat(document.getElementById('tr-cost-local').value)||0; transitObj.currency = document.getElementById('tr-currency').value; }
     var days2=S.tripData.itinerary||[]; var di=S.ui.itinerary.activeDay;
