@@ -436,7 +436,7 @@ var S = {
     budget:{ showModal:false, editId:null, openId:null, showSettings:false },
     places:{ view:'mine', filterCat:'전체', filterArea:'전체', filterVisited:'전체', ratingOnly:false, showModal:false, editId:null, openId:null, priceModalFor:null, showAreaManage:false },
     checklist:{ filterCat:'전체' },
-    itinerary:{ activeDay:0, showModal:false, editId:null, openId:null, transitEditId:null },
+    itinerary:{ activeDay:0, showModal:false, editId:null, openId:null, transitEditId:null, dayDateEditIdx:null },
     archive:{ showModal:false, editId:null, openId:null },
     settingsUi:{ newCatColor: CATEGORY_COLOR_PALETTE[0], newCatIcon: CATEGORY_ICON_PALETTE[0] },
   }
@@ -472,7 +472,7 @@ async function openTrip(id){
   S.ui.budget = { showModal:false, editId:null, openId:null, showSettings:false };
   S.ui.places = { view:'mine', filterCat:'전체', filterArea:'전체', filterVisited:'전체', ratingOnly:false, showModal:false, editId:null, openId:null, priceModalFor:null, showAreaManage:false };
   S.ui.checklist = { filterCat:'전체' };
-  S.ui.itinerary = { activeDay:0, showModal:false, editId:null, openId:null, transitEditId:null };
+  S.ui.itinerary = { activeDay:0, showModal:false, editId:null, openId:null, transitEditId:null, dayDateEditIdx:null };
   S.ui.archive = { showModal:false, editId:null, openId:null };
   S.tripData = null; render();
   saveLastView();
@@ -1192,13 +1192,14 @@ function itineraryTab(t){
     var html = '<div class="pad">'+emptyHint('아직 일정이 없어요', '🗺️✨')+'<button class="primary-btn" data-act="day-add">'+ico('plus',16,'#fff')+' 첫째 날 만들기</button></div>';
     return html;
   }
-  function dayLabel(i){ return 'Day '+(i+1) + (t.startDate ? ' ('+formatMD(addDaysToDate(t.startDate,i))+')' : ''); }
+  function dayDateStr(i){ return days[i].date || (t.startDate ? addDaysToDate(t.startDate,i) : ''); }
+  function dayLabel(i){ var ds=dayDateStr(i); return 'Day '+(i+1) + (ds ? ' ('+formatMD(ds)+')' : ''); }
   var idx = Math.min(S.ui.itinerary.activeDay, days.length-1);
   var day = days[idx];
   var html = '<div class="pad">';
-  html += '<div class="chip-row">'+days.map(function(d,i){ return pill(dayLabel(i), i===idx, 'day-set', 'data-idx="'+i+'"'); }).join('')+pill(ico('plus',12,'#5B5B62')+' 날짜 추가', false, 'day-add')+'</div>';
+  html += '<div class="chip-row">'+pill(ico('plus',12,'#5B5B62')+' 앞에 추가', false, 'day-add-front')+days.map(function(d,i){ return pill(dayLabel(i), i===idx, 'day-set', 'data-idx="'+i+'"'); }).join('')+pill(ico('plus',12,'#5B5B62')+' 날짜 추가', false, 'day-add')+'</div>';
   html += '<div class="row" style="justify-content:space-between;margin-bottom:12px;">'+
-    '<div style="font-size:16px;font-weight:800;color:var(--ink);">'+dayLabel(idx)+'</div>'+
+    '<div class="row" style="gap:4px;cursor:pointer;" data-act="day-date-edit-open" data-idx="'+idx+'"><span style="font-size:16px;font-weight:800;color:var(--ink);">'+dayLabel(idx)+'</span>'+ico('edit',12,'#B8B8BC')+'</div>'+
     '<div class="row">'+pill(ico('plus',13,'#fff')+' 일정 추가', true, 'item-add-open')+
     (days.length>1?'<button class="checkbtn" data-act="day-remove" data-idx="'+idx+'">'+ico('trash',13,'#D9502E')+'</button>':'')+
     '</div></div>';
@@ -1222,7 +1223,16 @@ function itineraryTab(t){
   html += '</div>';
   if (S.ui.itinerary.showModal) html += itineraryModal();
   if (S.ui.itinerary.transitEditId) html += transitModal();
+  if (S.ui.itinerary.dayDateEditIdx!=null) html += dayDateModal(dayDateStr(S.ui.itinerary.dayDateEditIdx));
   return html;
+}
+function dayDateModal(currentDate){
+  var idx = S.ui.itinerary.dayDateEditIdx;
+  var inner = ''+
+    '<div class="field"><label>이 날의 실제 날짜</label><input id="day-date-input" type="date" value="'+(currentDate||'')+'"></div>'+
+    '<p style="font-size:11px;color:var(--sub);margin:-6px 0 12px;">여기서 정한 날짜가 이 Day의 날짜로 고정돼요. 여행 시작일과 상관없이 원하는 날짜로 바꿀 수 있어요.</p>'+
+    '<button class="primary-btn" data-act="day-date-save" style="margin-bottom:8px;">저장</button>';
+  return modalWrap('Day '+(idx+1)+' 날짜 수정', inner);
 }
 function itineraryStopRow(item, isLast){
   var open = S.ui.itinerary.openId===item.id;
@@ -1697,10 +1707,24 @@ document.getElementById('root').addEventListener('click', async function(e){
 
   /* itinerary */
   if (act==='day-set'){ S.ui.itinerary.activeDay=parseInt(el.dataset.idx,10); render(); return; }
+  if (act==='day-date-edit-open'){ S.ui.itinerary.dayDateEditIdx=parseInt(el.dataset.idx,10); render(); return; }
+  if (act==='day-date-save'){
+    var newDate = document.getElementById('day-date-input').value;
+    var dIdx = S.ui.itinerary.dayDateEditIdx;
+    var days3 = S.tripData.itinerary||[];
+    var next3 = days3.map(function(d,i){ return i===dIdx ? Object.assign({},d,{date:newDate||null}) : d; });
+    S.ui.itinerary.dayDateEditIdx=null;
+    await saveTripData(Object.assign({},S.tripData,{itinerary:next3})); return;
+  }
   if (act==='day-add'){
     var days=S.tripData.itinerary||[]; var next=days.concat([{ id:uid(), label:'Day '+(days.length+1), items:[] }]);
     S.ui.itinerary.activeDay=next.length-1;
     await saveTripData(Object.assign({},S.tripData,{itinerary:next})); return;
+  }
+  if (act==='day-add-front'){
+    var days2=S.tripData.itinerary||[]; var next2=[{ id:uid(), label:'', items:[] }].concat(days2);
+    S.ui.itinerary.activeDay=0;
+    await saveTripData(Object.assign({},S.tripData,{itinerary:next2})); return;
   }
   if (act==='day-remove'){
     var idx=parseInt(el.dataset.idx,10); var days=S.tripData.itinerary||[]; var next=days.filter(function(_,i){return i!==idx;});
@@ -1861,7 +1885,7 @@ function closeAllModals(){
   S.ui.budget.showModal=false; S.ui.budget.editId=null; S.ui.budget.showSettings=false;
   S.ui.places.showModal=false; S.ui.places.editId=null;
   S.ui.places.priceModalFor=null; S.ui.places.showAreaManage=false;
-  S.ui.itinerary.showModal=false; S.ui.itinerary.editId=null; S.ui.itinerary.transitEditId=null;
+  S.ui.itinerary.showModal=false; S.ui.itinerary.editId=null; S.ui.itinerary.transitEditId=null; S.ui.itinerary.dayDateEditIdx=null;
   S.ui.archive.showModal=false; S.ui.archive.editId=null;
 }
 
