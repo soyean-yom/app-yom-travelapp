@@ -464,7 +464,7 @@ var S = {
     checklist:{ filterCat:'전체' },
     itinerary:{ activeDay:0, showModal:false, editId:null, openId:null, transitEditId:null, dayDateEditIdx:null },
     archive:{ showModal:false, editId:null, openId:null },
-    settingsUi:{ newCatColor: CATEGORY_COLOR_PALETTE[0], newCatIcon: CATEGORY_ICON_PALETTE[0] },
+    settingsUi:{ newCatColor: CATEGORY_COLOR_PALETTE[0], newCatIcon: CATEGORY_ICON_PALETTE[0], editCatKey:null, editCatIcon:null, editCatColor:null },
   }
 };
 /* photo cache: entityId -> [{id,dataUrl}]. Photos are stored under their own storage key
@@ -561,6 +561,8 @@ function render(){
   else { root.innerHTML = tripScreen(); }
   var newScroll = root.querySelector('.scroll');
   if (newScroll && savedScrollTop) newScroll.scrollTop = savedScrollTop;
+  var activeChip = root.querySelector('#day-chip-row .pill.active');
+  if (activeChip && typeof activeChip.scrollIntoView === 'function') activeChip.scrollIntoView({inline:'center', block:'nearest'});
 }
 function addSpin(){ var svg = document.querySelector('svg'); if (svg) svg.classList.add('spin'); }
 
@@ -671,12 +673,15 @@ function settingsScreen(){
           '</div>';
         }).join('')+
       '</div>'+
-      '<div class="section-title">카테고리 관리 (직접 추가·삭제할 수 있어요)</div>'+
+      '<div class="section-title">카테고리 관리 (직접 추가·삭제·수정할 수 있어요)</div>'+
       '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;">'+
         cats.map(function(c){
           return '<div class="row" style="justify-content:space-between;padding:8px 12px;border-radius:14px;background:var(--card);box-shadow:0 4px 14px rgba(23,23,26,.05);">'+
             '<div class="row">'+catGlow(c, 28)+'<span style="font-size:13px;font-weight:700;color:var(--ink);">'+esc(c.key)+'</span></div>'+
-            '<button data-act="settings-cat-delete" data-key="'+esc(c.key)+'" style="border:none;background:none;cursor:pointer;">'+ico('trash',13,'#D9502E')+'</button>'+
+            '<div class="row" style="gap:10px;">'+
+              '<button data-act="settings-cat-edit-open" data-key="'+esc(c.key)+'" style="border:none;background:none;cursor:pointer;">'+ico('edit',13,'#6C96FF')+'</button>'+
+              '<button data-act="settings-cat-delete" data-key="'+esc(c.key)+'" style="border:none;background:none;cursor:pointer;">'+ico('trash',13,'#D9502E')+'</button>'+
+            '</div>'+
           '</div>';
         }).join('')+
       '</div>'+
@@ -705,7 +710,22 @@ function settingsScreen(){
         '<button class="primary-btn" data-act="settings-pm-add">결제수단 추가</button>'+
       '</div>'+
     '</div>'+
-  '</div>';
+  '</div>'+
+  (S.ui.settingsUi.editCatKey ? catEditModal(cats.find(function(c){return c.key===S.ui.settingsUi.editCatKey;})) : '');
+}
+function catEditModal(cat){
+  if (!cat) return '';
+  var eIcon = S.ui.settingsUi.editCatIcon!=null ? S.ui.settingsUi.editCatIcon : cat.icon;
+  var eColor = S.ui.settingsUi.editCatColor || cat.color;
+  var inner = ''+
+    '<div class="field"><label>아이콘</label><input id="edit-cat-icon-input" maxlength="4" value="'+esc(eIcon||'')+'" style="font-size:20px;text-align:center;"></div>'+
+    '<div class="field"><label>색상</label><input type="hidden" id="edit-cat-color-input" value="'+eColor+'"><div id="edit-cat-color-row" style="display:flex;gap:8px;flex-wrap:wrap;">'+
+      CATEGORY_COLOR_PALETTE.map(function(c){
+        return '<button type="button" data-act="settings-cat-edit-color" data-color="'+c+'" style="width:26px;height:26px;border-radius:50%;background:'+c+';border:'+(c===eColor?'3px solid #17171A':'3px solid transparent')+';cursor:pointer;"></button>';
+      }).join('')+
+    '</div></div>'+
+    '<button class="primary-btn" data-act="settings-cat-edit-save">저장</button>';
+  return modalWrap(cat.key+' 아이콘·색상 수정', inner);
 }
 function tripScreen(){
   var t = currentTrip();
@@ -816,10 +836,6 @@ function budgetTab(t){
   var totalPaid = paid.reduce(function(s,i){return s+entryKrw(i,t);},0);
   var totalPending = pending.reduce(function(s,i){return s+entryKrw(i,t);},0);
   var totalSpent = totalPaid + totalPending;
-  var totalBudget = t.totalBudget||0;
-  var pct = totalBudget>0 ? Math.round(totalSpent/totalBudget*100) : 0;
-  var barColor = budgetStateColor(pct);
-  var remaining = totalBudget - totalSpent;
 
   var bd = currencyBreakdown(items, t);
   var bdParts = Object.keys(bd.byCur).map(function(cur){ return cur+' '+bd.byCur[cur].toLocaleString(); });
@@ -836,6 +852,17 @@ function budgetTab(t){
     var ck = i.category || '기타';
     byDate[key].byCat[ck] = (byDate[key].byCat[ck]||0) + entryKrw(i,t);
   });
+  var inTripSpent = totalSpent - preTrip.total;
+  var preTripBudget = t.preTripBudget||0;
+  var prePct = preTripBudget>0 ? Math.round(preTrip.total/preTripBudget*100) : 0;
+  var preColor = budgetStateColor(prePct);
+  var preRemaining = preTripBudget - preTrip.total;
+
+  var totalBudget = t.totalBudget||0;
+  var pct = totalBudget>0 ? Math.round(inTripSpent/totalBudget*100) : 0;
+  var barColor = budgetStateColor(pct);
+  var remaining = totalBudget - inTripSpent;
+
   var dateKeys = Object.keys(byDate).sort();
   var maxDay = Math.max.apply(null, dateKeys.map(function(k){return byDate[k].total;}).concat([1]));
   var today = todayStr();
@@ -848,15 +875,25 @@ function budgetTab(t){
 
   var html = '<div class="pad">';
 
+  html += '<div class="card" style="margin-bottom:10px;">'+
+    '<div class="row" style="justify-content:space-between;margin-bottom:'+(preTripBudget?'8px':'0')+';">'+
+      '<div class="row">'+glow('🧳',preColor,32)+'<div><div style="font-size:11px;color:var(--sub);font-weight:700;">여행 전 사용 예산</div><div class="mono" style="font-size:16px;font-weight:800;color:var(--ink);">'+(preTripBudget?'₩'+preTripBudget.toLocaleString():'설정 안 함')+'</div></div></div>'+
+      pill(ico('gear',11)+' 예산 설정', false, 'budget-settings-open')+
+    '</div>'+
+    (preTripBudget ? (
+      progressBar(prePct, preColor, 14)+
+      '<div class="row" style="justify-content:space-between;font-size:11px;color:var(--sub);margin-top:6px;"><span>사용 ₩'+preTrip.total.toLocaleString()+' ('+prePct+'%)</span><span style="color:'+(preRemaining<0?'#D9502E':'var(--sub)')+';font-weight:'+(preRemaining<0?'800':'400')+';">'+(preRemaining>=0?'남음 ₩'+preRemaining.toLocaleString():'초과 ₩'+Math.abs(preRemaining).toLocaleString())+'</span></div>'
+    ) : (preTrip.total ? '<p style="font-size:12px;color:var(--sub);margin:6px 0 0;">현재 사용 ₩'+preTrip.total.toLocaleString()+' · 예산을 설정하면 진행률이 보여요.</p>' : '<p style="font-size:12px;color:var(--sub);margin:6px 0 0;">출발 전 미리 쓰는 비용(보험, 예약금 등)을 위한 예산이에요.</p>'))+
+  '</div>';
+
   html += '<div class="card" style="margin-bottom:12px;">'+
     '<div class="row" style="justify-content:space-between;margin-bottom:'+(totalBudget?'8px':'0')+';">'+
-      '<div class="row">'+glow('💰',barColor,32)+'<div><div style="font-size:11px;color:var(--sub);font-weight:700;">총예산</div><div class="mono" style="font-size:16px;font-weight:800;color:var(--ink);">'+(totalBudget?'₩'+totalBudget.toLocaleString():'설정 안 함')+'</div></div></div>'+
-      pill(ico('gear',11)+' 예산 설정', false, 'budget-settings-open')+
+      '<div class="row">'+glow('💰',barColor,32)+'<div><div style="font-size:11px;color:var(--sub);font-weight:700;">환전한 예산</div><div class="mono" style="font-size:16px;font-weight:800;color:var(--ink);">'+(totalBudget?'₩'+totalBudget.toLocaleString():'설정 안 함')+'</div></div></div>'+
     '</div>'+
     (totalBudget ? (
       progressBar(pct, barColor, 14)+
-      '<div class="row" style="justify-content:space-between;font-size:11px;color:var(--sub);margin-top:6px;"><span>사용 ₩'+totalSpent.toLocaleString()+' ('+pct+'%)</span><span style="color:'+(remaining<0?'#D9502E':'var(--sub)')+';font-weight:'+(remaining<0?'800':'400')+';">'+(remaining>=0?'남음 ₩'+remaining.toLocaleString():'초과 ₩'+Math.abs(remaining).toLocaleString())+'</span></div>'
-    ) : '<p style="font-size:12px;color:var(--sub);margin:6px 0 0;">예산 설정을 누르면 진행률과 카테고리별 예산을 관리할 수 있어요.</p>')+
+      '<div class="row" style="justify-content:space-between;font-size:11px;color:var(--sub);margin-top:6px;"><span>사용 ₩'+inTripSpent.toLocaleString()+' ('+pct+'%)</span><span style="color:'+(remaining<0?'#D9502E':'var(--sub)')+';font-weight:'+(remaining<0?'800':'400')+';">'+(remaining>=0?'남음 ₩'+remaining.toLocaleString():'초과 ₩'+Math.abs(remaining).toLocaleString())+'</span></div>'
+    ) : '<p style="font-size:12px;color:var(--sub);margin:6px 0 0;">여행 중(출발일 이후) 쓸 환전 예산이에요. 현지에서 실제 쓰는 돈 기준이에요.</p>')+
     (t.dailyBudget ? (
       '<div class="dashed"><div class="row" style="justify-content:space-between;"><span style="font-size:12px;color:var(--sub);font-weight:700;">오늘 사용 가능</span><span class="mono" style="font-size:14px;font-weight:800;color:'+(dailyRemaining<0?'#D9502E':'#34C77B')+';">₩'+dailyRemaining.toLocaleString()+'</span></div><div style="font-size:10px;color:var(--sub);">데일리 예산 ₩'+t.dailyBudget.toLocaleString()+' 중 오늘 ₩'+todaySpent.toLocaleString()+' 사용</div></div>'
     ) : '')+
@@ -980,7 +1017,10 @@ function budgetSettingsModal(t){
   var cats = currentCategories();
   var catBudgets = t.categoryBudgets||{};
   var inner = ''+
-    '<div class="field"><label>총예산 (KRW)</label><input id="bs-total" type="number" placeholder="예: 1500000" value="'+(t.totalBudget||'')+'"></div>'+
+    '<div class="field"><label>🧳 여행 전 사용 예산 (KRW, 선택)</label><input id="bs-pretrip" type="number" placeholder="예: 300000" value="'+(t.preTripBudget||'')+'"></div>'+
+    '<p style="font-size:11px;color:var(--sub);margin:-6px 0 12px;">출발일 전에 쓰는 비용(보험, 미리 예약금 등)을 위한 예산이에요.</p>'+
+    '<div class="field"><label>💰 환전한 예산 (KRW)</label><input id="bs-total" type="number" placeholder="예: 1500000" value="'+(t.totalBudget||'')+'"></div>'+
+    '<p style="font-size:11px;color:var(--sub);margin:-6px 0 12px;">여행 중(출발일 이후)에 쓸 환전 예산이에요.</p>'+
     '<div class="field"><label>데일리 예산 (선택, KRW)</label><input id="bs-daily" type="number" placeholder="예: 150000" value="'+(t.dailyBudget||'')+'"></div>'+
     '<p style="font-size:11px;color:var(--sub);margin:-6px 0 12px;">현지에서 하루에 쓸 수 있는 참고 금액이에요. 오늘 날짜로 기록된 지출과 비교해서 보여줘요.</p>'+
     '<div class="section-title" style="margin-top:0;">카테고리별 예산 (선택)</div>'+
@@ -1226,7 +1266,7 @@ function itineraryTab(t){
   var idx = Math.min(S.ui.itinerary.activeDay, days.length-1);
   var day = days[idx];
   var html = '<div class="pad">';
-  html += '<div class="chip-row">'+pill(ico('plus',12,'#5B5B62')+' 앞에 추가', false, 'day-add-front')+days.map(function(d,i){ return pill(dayLabel(i), i===idx, 'day-set', 'data-idx="'+i+'"'); }).join('')+pill(ico('plus',12,'#5B5B62')+' 날짜 추가', false, 'day-add')+'</div>';
+  html += '<div class="chip-row" id="day-chip-row">'+pill(ico('plus',12,'#5B5B62')+' 앞에 추가', false, 'day-add-front')+days.map(function(d,i){ return pill(dayLabel(i), i===idx, 'day-set', 'data-idx="'+i+'"'); }).join('')+pill(ico('plus',12,'#5B5B62')+' 날짜 추가', false, 'day-add')+'</div>';
   html += '<div class="row" style="justify-content:space-between;margin-bottom:12px;">'+
     '<div class="row" style="gap:4px;cursor:pointer;" data-act="day-date-edit-open" data-idx="'+idx+'"><span style="font-size:16px;font-weight:800;color:var(--ink);">'+dayLabel(idx)+'</span>'+ico('edit',12,'#B8B8BC')+'</div>'+
     '<div class="row">'+pill(ico('plus',13,'#fff')+' 일정 추가', true, 'item-add-open')+
@@ -1532,6 +1572,26 @@ document.getElementById('root').addEventListener('click', async function(e){
     S.settings.categories = S.settings.categories.filter(function(c){return c.key!==el.dataset.key;});
     await saveSettings(); render(); return;
   }
+  if (act==='settings-cat-edit-open'){
+    S.ui.settingsUi.editCatKey = el.dataset.key;
+    S.ui.settingsUi.editCatIcon = null; S.ui.settingsUi.editCatColor = null;
+    render(); return;
+  }
+  if (act==='settings-cat-edit-color'){
+    var colorHidden2 = document.getElementById('edit-cat-color-input');
+    if (colorHidden2) colorHidden2.value = el.dataset.color;
+    var colorRow2 = document.getElementById('edit-cat-color-row');
+    if (colorRow2) colorRow2.querySelectorAll('button').forEach(function(b){ b.style.border = b===el ? '3px solid #17171A' : '3px solid transparent'; });
+    return;
+  }
+  if (act==='settings-cat-edit-save'){
+    var editIcon = document.getElementById('edit-cat-icon-input').value.trim() || '📍';
+    var editColor = document.getElementById('edit-cat-color-input').value;
+    var editKey = S.ui.settingsUi.editCatKey;
+    S.settings.categories = S.settings.categories.map(function(c){ return c.key===editKey ? Object.assign({},c,{icon:editIcon,color:editColor}) : c; });
+    S.ui.settingsUi.editCatKey = null;
+    await saveSettings(); render(); return;
+  }
   if (act==='settings-pm-add'){
     var newPm=document.getElementById('new-pm-name').value.trim(); if (!newPm) return;
     if (S.settings.paymentMethods.indexOf(newPm)===-1) S.settings.paymentMethods = S.settings.paymentMethods.concat([newPm]);
@@ -1585,11 +1645,12 @@ document.getElementById('root').addEventListener('click', async function(e){
   if (act==='budget-settings-open'){ S.ui.budget.showModal=false; S.ui.budget.showSettings=true; render(); return; }
   if (act==='budget-settings-save'){
     var trip5=currentTrip(); if (!trip5) return;
+    var preTripVal=document.getElementById('bs-pretrip').value;
     var totalVal=document.getElementById('bs-total').value; var dailyVal=document.getElementById('bs-daily').value;
     var catBudgets2={};
     var catInputs=document.querySelectorAll('.bs-cat-input');
     catInputs.forEach(function(inp){ var v=parseFloat(inp.value); if (!isNaN(v) && v>0) catBudgets2[inp.dataset.cat]=v; });
-    var updated=Object.assign({},trip5,{ totalBudget: totalVal?parseFloat(totalVal):0, dailyBudget: dailyVal?parseFloat(dailyVal):0, categoryBudgets: catBudgets2 });
+    var updated=Object.assign({},trip5,{ preTripBudget: preTripVal?parseFloat(preTripVal):0, totalBudget: totalVal?parseFloat(totalVal):0, dailyBudget: dailyVal?parseFloat(dailyVal):0, categoryBudgets: catBudgets2 });
     S.ui.budget.showSettings=false;
     await saveTrips(S.trips.map(function(t2){ return t2.id===trip5.id ? updated : t2; }));
     render(); return;
@@ -1757,9 +1818,22 @@ document.getElementById('root').addEventListener('click', async function(e){
     var newDate = document.getElementById('day-date-input').value;
     var dIdx = S.ui.itinerary.dayDateEditIdx;
     var days3 = S.tripData.itinerary||[];
-    var next3 = days3.map(function(d,i){ return i===dIdx ? Object.assign({},d,{date:newDate||null}) : d; });
+    var trip4 = currentTrip();
+    var withDates = days3.map(function(d,i){
+      var eff = i===dIdx ? (newDate||null) : (d.date || (trip4&&trip4.startDate ? addDaysToDate(trip4.startDate,i) : null));
+      return Object.assign({},d,{date:eff});
+    });
+    var withIdx = withDates.map(function(d,i){ return {d:d, i:i}; });
+    withIdx.sort(function(a,b){
+      if (!a.d.date && !b.d.date) return a.i-b.i;
+      if (!a.d.date) return 1;
+      if (!b.d.date) return -1;
+      return a.d.date.localeCompare(b.d.date);
+    });
+    var sorted = withIdx.map(function(x){return x.d;});
     S.ui.itinerary.dayDateEditIdx=null;
-    await saveTripData(Object.assign({},S.tripData,{itinerary:next3})); return;
+    S.ui.itinerary.activeDay = withIdx.findIndex(function(x){return x.i===dIdx;});
+    await saveTripData(Object.assign({},S.tripData,{itinerary:sorted})); return;
   }
   if (act==='day-add'){
     var days=S.tripData.itinerary||[]; var next=days.concat([{ id:uid(), label:'Day '+(days.length+1), items:[] }]);
@@ -1934,6 +2008,7 @@ function closeAllModals(){
   S.ui.places.priceModalFor=null; S.ui.places.showAreaManage=false;
   S.ui.itinerary.showModal=false; S.ui.itinerary.editId=null; S.ui.itinerary.transitEditId=null; S.ui.itinerary.dayDateEditIdx=null;
   S.ui.archive.showModal=false; S.ui.archive.editId=null;
+  if (S.ui.settingsUi) S.ui.settingsUi.editCatKey=null;
 }
 
 /* change listeners (select + checkbox that must not trigger a full re-render mid-typing) */
@@ -1988,6 +2063,27 @@ document.getElementById('root').addEventListener('change', function(e){
 });
 
 /* ---------------- boot ---------------- */
+var swipeStartX = null, swipeStartY = null, swipeOnChip = false;
+document.getElementById('root').addEventListener('touchstart', function(e){
+  if (S.tab!=='itinerary' || S.currentTripId==null) return;
+  if (S.ui.itinerary.showModal || S.ui.itinerary.transitEditId || S.ui.itinerary.dayDateEditIdx!=null) return;
+  if (!e.touches || !e.touches[0]) return;
+  swipeOnChip = !!(e.target.closest && e.target.closest('#day-chip-row'));
+  swipeStartX = e.touches[0].clientX; swipeStartY = e.touches[0].clientY;
+}, {passive:true});
+document.getElementById('root').addEventListener('touchend', function(e){
+  if (swipeStartX==null || swipeOnChip) { swipeStartX=null; return; }
+  if (!e.changedTouches || !e.changedTouches[0]) { swipeStartX=null; return; }
+  var dx = e.changedTouches[0].clientX - swipeStartX;
+  var dy = e.changedTouches[0].clientY - swipeStartY;
+  swipeStartX = null;
+  if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy)*1.5){
+    var days = S.tripData.itinerary||[];
+    var idx = S.ui.itinerary.activeDay;
+    if (dx < 0 && idx < days.length-1){ S.ui.itinerary.activeDay = idx+1; render(); }
+    else if (dx > 0 && idx > 0){ S.ui.itinerary.activeDay = idx-1; render(); }
+  }
+}, {passive:true});
 loadTrips();
 </script>
 </body>
